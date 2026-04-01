@@ -1,18 +1,11 @@
 <script lang="ts">
+	import { env } from '$env/dynamic/public';
 	import { onMount } from 'svelte';
-	import type { RealtimeChannel } from '@supabase/supabase-js';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 	import { MTG_GLOBAL_CHANNEL, STORAGE_KEYS, supabase } from '$lib/supabaseClient';
 
-	type PageProps = {
-		data: {
-			unlocked: boolean;
-		};
-		form?: {
-			unlockError?: string;
-		};
-	};
-
-	let { data, form }: PageProps = $props();
+	const PASSPHRASE_UNLOCKED_AT_KEY = 'mtgvote.passphraseUnlockedAt';
+	const PASSPHRASE_UNLOCK_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 
 	type PresenceMeta = {
 		name?: string;
@@ -39,7 +32,9 @@
 		reason: string;
 	};
 
-	let passphraseUnlocked = $derived(Boolean(data?.unlocked));
+	let passphraseInput = $state('');
+	let passphraseError = $state('');
+	let passphraseUnlocked = $state(false);
 
 	let draftName = $state('');
 	let playerName = $state('');
@@ -127,12 +122,13 @@
 
 	onMount(() => {
 		clientId = getOrCreateClientId();
+		passphraseUnlocked = isPassphraseSessionValid();
 		playerName = localStorage.getItem(STORAGE_KEYS.playerName) ?? '';
 		draftName = playerName;
 	});
 
 	$effect(() => {
-		if (!passphraseUnlocked || !playerName) {
+	if (!passphraseUnlocked || !playerName) {
 			return;
 		}
 
@@ -147,6 +143,12 @@
 		if (allPresentUsersVoted && !revealed) {
 			revealed = true;
 			void broadcastState('auto_reveal');
+			return;
+		}
+
+		if (!allPresentUsersVoted && revealed) {
+			revealed = false;
+			void broadcastState('auto_conceal');
 		}
 	});
 
@@ -162,6 +164,39 @@
 				: `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 		sessionStorage.setItem(STORAGE_KEYS.clientId, generated);
 		return generated;
+	}
+
+	function isPassphraseSessionValid() {
+		const rawValue = localStorage.getItem(PASSPHRASE_UNLOCKED_AT_KEY);
+		if (!rawValue) {
+			return false;
+		}
+
+		const unlockedAt = Number(rawValue);
+		if (!Number.isFinite(unlockedAt)) {
+			return false;
+		}
+
+		return Date.now() - unlockedAt < PASSPHRASE_UNLOCK_TTL_MS;
+	}
+
+	function submitPassphrase() {
+		passphraseError = '';
+
+		const configuredPassphrase = (env.PUBLIC_ENTRY_PASSPHRASE ?? '').trim();
+		if (!configuredPassphrase) {
+			passphraseError = 'Passphrase is not configured.';
+			return;
+		}
+
+		if (passphraseInput.trim() !== configuredPassphrase) {
+			passphraseError = 'Incorrect passphrase.';
+			return;
+		}
+
+		localStorage.setItem(PASSPHRASE_UNLOCKED_AT_KEY, Date.now().toString());
+		passphraseUnlocked = true;
+		passphraseInput = '';
 	}
 
 	function submitName() {
@@ -321,13 +356,10 @@
 		syncPresence();
 	}
 
-	async function resetRound() {
-		revealed = false;
-		roundId += 1;
+	async function resetOwnVote() {
 		selectedVote = '';
-
 		await updateOwnPresence(false, null, roundId);
-		await broadcastState('reset_round');
+		syncPresence();
 	}
 
 	async function resetAllState() {
@@ -412,15 +444,20 @@
 
 <main class="app-shell mx-auto flex min-h-screen w-full max-w-4xl flex-col gap-6 p-6">
 	<h1 class="text-3xl font-bold">MTG Vote</h1>
-
 	{#if !passphraseUnlocked}
 		<section class="rounded border p-4">
 			<h2 class="mb-3 text-lg font-semibold">Enter passphrase</h2>
-			<form method="POST" action="?/unlock" class="flex flex-col gap-3 sm:flex-row">
+			<form
+				class="flex flex-col gap-3 sm:flex-row"
+				onsubmit={(event) => {
+					event.preventDefault();
+					submitPassphrase();
+				}}
+			>
 				<input
 					class="w-full rounded border px-3 py-2"
 					type="password"
-					name="passphrase"
+					bind:value={passphraseInput}
 					placeholder="Passphrase"
 					required
 				/>
@@ -428,8 +465,8 @@
 					>Unlock</button
 				>
 			</form>
-			{#if form?.unlockError}
-				<p class="mt-2 text-sm text-red-400">{form.unlockError}</p>
+			{#if passphraseError}
+				<p class="mt-2 text-sm text-red-400">{passphraseError}</p>
 			{/if}
 		</section>
 	{:else if !playerName}
@@ -508,51 +545,36 @@
 		{#if hasActiveRound}
 			<section class="rounded border p-4">
 				<h2 class="mb-3 text-lg font-semibold">Your vote</h2>
-				<div class="flex flex-col gap-3 sm:flex-row">
-					<div class="relative h-fit w-full">
-						<select
-							class="vote-select h-11 w-full cursor-pointer appearance-none rounded border px-3 py-2 pr-12"
-							bind:value={selectedVote}
-						>
-							<option value="">Select an option</option>
-							{#each voteOptions as option (option)}
-								<option value={option}>{option}</option>
-							{/each}
-						</select>
-						<span
-							class="pointer-events-none absolute top-1/2 right-4 flex h-4 w-4 -translate-y-1/2 items-center justify-center opacity-80"
-						>
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								viewBox="0 0 12 12"
-								class="h-3 w-3"
-								aria-hidden="true"
+				<div class="flex flex-col gap-3">
+					<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+						{#each voteOptions as option (option)}
+							<button
+								class={`vote-option h-11 cursor-pointer rounded border px-4 py-2 text-left font-medium ${selectedVote === option ? 'vote-option--selected' : ''}`}
+								type="button"
+								onclick={() => {
+									selectedVote = option;
+								}}
 							>
-								<path
-									d="M2.25 4.5 6 8.25 9.75 4.5"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="1.75"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-								/>
-							</svg>
-						</span>
+								{option}
+							</button>
+						{/each}
 					</div>
-					<button
-						class="h-11 cursor-pointer rounded border px-4 py-2 font-medium whitespace-nowrap"
-						type="button"
-						onclick={submitVote}
-					>
-						Submit
-					</button>
-					<button
-						class="h-11 cursor-pointer rounded border px-4 py-2 whitespace-nowrap"
-						type="button"
-						onclick={resetRound}
-					>
-						Reset
-					</button>
+					<div class="flex flex-wrap gap-3">
+						<button
+							class="h-11 cursor-pointer rounded border px-4 py-2 font-medium whitespace-nowrap"
+							type="button"
+							onclick={submitVote}
+						>
+							Submit
+						</button>
+						<button
+							class="h-11 cursor-pointer rounded border px-4 py-2 whitespace-nowrap"
+							type="button"
+							onclick={resetOwnVote}
+						>
+							Reset
+						</button>
+					</div>
 				</div>
 			</section>
 
@@ -613,7 +635,7 @@
 		color: #111827;
 	}
 
-	.app-shell :where(section, li, input, select, button) {
+	.app-shell :where(section, li, input, button) {
 		border-color: #374151;
 		background-color: #ffffff;
 		color: #111827;
@@ -623,12 +645,11 @@
 		color: #6b7280;
 	}
 
-	.vote-select {
-		background-image: none;
-	}
-
-	.vote-select::-ms-expand {
-		display: none;
+	.vote-option--selected {
+		border-color: #16a34a;
+		background-color: #dcfce7;
+		color: #14532d;
+		box-shadow: 0 0 0 2px rgb(34 197 94 / 0.35);
 	}
 
 	@media (prefers-color-scheme: dark) {
@@ -637,7 +658,7 @@
 			color: #e5e7eb;
 		}
 
-		.app-shell :where(section, li, input, select, button) {
+		.app-shell :where(section, li, input, button) {
 			border-color: #4b5563;
 			background-color: #111827;
 			color: #e5e7eb;
@@ -645,6 +666,13 @@
 
 		.app-shell input::placeholder {
 			color: #9ca3af;
+		}
+
+		.vote-option--selected {
+			border-color: #4ade80;
+			background-color: #14532d;
+			color: #dcfce7;
+			box-shadow: 0 0 0 2px rgb(74 222 128 / 0.45);
 		}
 	}
 </style>
