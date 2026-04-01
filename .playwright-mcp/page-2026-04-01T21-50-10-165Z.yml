@@ -1,0 +1,31 @@
+- main [ref=e3]:
+  - heading "MTG Vote" [level=1] [ref=e4]
+  - paragraph [ref=e5]: Single shared room. Votes are hidden until all connected users have voted.
+  - generic [ref=e18]:
+    - heading "Round options" [level=2] [ref=e19]
+    - generic [ref=e20]:
+      - generic [ref=e21]:
+        - textbox [ref=e22]: Option A
+        - button "Remove" [disabled] [ref=e23]
+      - generic [ref=e24]:
+        - textbox [ref=e25]: Option B
+        - button "Remove" [disabled] [ref=e26]
+    - generic [ref=e27]:
+      - button "Add option" [ref=e28]
+      - button "Start/update round" [ref=e29]
+  - generic [ref=e30]:
+    - heading "Your vote" [level=2] [ref=e31]
+    - generic [ref=e32]:
+      - combobox [ref=e33]:
+        - option "Select an option" [selected]
+        - option "Option A"
+        - option "Option B"
+      - button "Submit vote" [ref=e34]
+      - button "Reset round" [ref=e35]
+  - generic [ref=e36]:
+    - heading "Players" [level=2] [ref=e37]
+    - paragraph [ref=e38]: "Voted: 0 / 0"
+    - list
+  - generic [ref=e39]:
+    - heading "Votes concealed" [level=2] [ref=e40]
+    - paragraph [ref=e41]: Votes reveal automatically once all connected users vote.

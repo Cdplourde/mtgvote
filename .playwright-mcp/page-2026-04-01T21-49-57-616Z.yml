@@ -1,0 +1,9 @@
+- main [ref=e3]:
+  - heading "MTG Vote" [level=1] [ref=e4]
+  - paragraph [ref=e5]: Single shared room. Votes are hidden until all connected users have voted.
+  - generic [ref=e6]:
+    - heading "Enter passphrase" [level=2] [ref=e7]
+    - generic [ref=e8]:
+      - textbox "Passphrase" [ref=e9]: wrongpass
+      - button "Unlock" [ref=e10]
+    - paragraph [ref=e12]: Incorrect passphrase.

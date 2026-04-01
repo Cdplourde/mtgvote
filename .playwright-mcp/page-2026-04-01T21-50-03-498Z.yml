@@ -1,0 +1,8 @@
+- main [ref=e3]:
+  - heading "MTG Vote" [level=1] [ref=e4]
+  - paragraph [ref=e5]: Single shared room. Votes are hidden until all connected users have voted.
+  - generic [ref=e13]:
+    - heading "Enter your name" [level=2] [ref=e14]
+    - generic [ref=e15]:
+      - textbox "Your name" [ref=e16]
+      - button "Join" [ref=e17]
